@@ -1,0 +1,96 @@
+library(openxlsx)
+library(ggplot2)
+# try plotting OG and cut sites (just the gand means plus SE, for e.g.)
+
+#### read the Mh dataset  ####
+# from "remove tree size effects from growth.R"
+Mh=readRDS(file = "C:/file.name.RDS") 
+
+#### read in the tree ages and pith_YN #####
+tree_age1=readWorkbook("C:/file.name.xlsx", 
+                       sheet="EM Sites", colNames = T, rowNames = F)
+tree_age=tree_age1[c("Site","Tree_number","Numb_vis_ring","To_middle_YN")]
+
+# merge with the ring_width data set and get age
+Mh_age=merge(Mh,tree_age,by=c("Site","Tree_number"))
+unique(Mh_age$To_middle_YN)
+# subset to just To_middle_YN is "Yes"     "Maybe?"  "Maybe"   "Maybe? "
+Mh_age_yes=subset(Mh_age,( (Mh_age$To_middle_YN=="Yes")|(Mh_age$To_middle_YN=="Maybe?")|
+                           (Mh_age$To_middle_YN=="Maybe")|(Mh_age$To_middle_YN=="Maybe? ") ))
+unique(Mh_age_yes$To_middle_YN) # check
+Mh_age_yes$Age=Mh_age_yes$Year-(2019-as.numeric(Mh_age_yes$Numb_vis_ring)) # year minus birth year
+with(Mh_age_yes,plot(Initial_DBH,Age))
+Mh_age_yes=subset(Mh_age_yes,Mh_age_yes$Age>=1) # get rid of ages <1
+with(Mh_age_yes,plot(Initial_DBH,Age))  
+
+# fit multiple regression loess fit
+loessModmult <- loess(Log_BAI ~ Initial_DBH+Age, data=Mh_age_yes,    
+                         control=loess.control(surface="direct"),span=0.5) 
+Mh_age_yes$pred_lBAI=predict(loessModmult,Mh_age_yes[c("Initial_DBH","Age")]) # predicted values for particular x values
+with(Mh_age_yes,plot(Initial_DBH,Log_BAI)) 
+points(Mh_age_yes$Initial_DBH,Mh_age_yes$pred_lBAI,lty=2,col="red",lwd=3)
+with(Mh_age_yes,plot(Age,Log_BAI)) 
+points(Mh_age_yes$Age,Mh_age_yes$pred_lBAI,lty=2,col="red",lwd=3)
+
+# add growth corrected for Initial_DBH and Age
+Mh_age_yes$size_age_corrected_lBAI=Mh_age_yes$Log_BAI-Mh_age_yes$pred_lBAI
+
+#### plot OG and cut ####
+##### List of sites and cut dates #####
+mature=c("CB1","CB2","CL1","CL2","EF1","EF3","LL1","LL2","ML1","ML2","ML3","SWCN","SWCS","TL1","TL2")
+recent=c("DL4","DL5","LB1","LB2","LH2","LH3","RF1","RF4","WB1","WB3")
+oldgrowth=c("BL2","BL3","CA1","CA2","FL","JL2","JL5","OU1","OU2","PL","RL","SM1","SM2","SWUN","SWUS")
+no_log_ever=c("FL","PL","RL")
+cut=c(mature,recent) # both together
+date1=c(2001,2003,1989,1989,1999,1999,2001,2003,2000,2003,2004,2005,2005,1993,
+        1988,2014,2014,2015,2014,2014,2014,2014,2014,2014,2014)
+date2=c(NA,NA,NA,NA,NA,NA,NA,NA,1977,1976,1982,1992,1992,NA,NA,1998,1998,1989,
+        1989,1985,1985,1985,1984,1989,1999)
+date3=c(NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,1980,1980,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA) # just Swan Lake...
+date4=c(NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,1967,1967,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA) # just Swan Lake...
+
+#### Subsets of sites according to the Site types ####
+mature_Mh_age_yes=Mh_age_yes[(Mh_age_yes$Site %in% mature),]
+unique(mature_Mh_age_yes$Site)
+recent_Mh_age_yes=Mh_age_yes[(Mh_age_yes$Site %in% recent),]
+unique(recent_Mh_age_yes$Site)
+oldgrowth_Mh_age_yes=Mh_age_yes[(Mh_age_yes$Site %in% oldgrowth),]
+unique(oldgrowth_Mh_age_yes$Site)
+no_log_ever_Mh_age_yes=Mh_age_yes[(Mh_age_yes$Site %in% no_log_ever),]
+unique(no_log_ever_Mh_age_yes$Site)
+
+##### For each set of site types, calculate mean tree growth by year ####
+# se is calculated based on site sample size
+# first get means across years+sites, then across years
+year_mean=function(dataset,treatment) {
+  # by Site and Year
+  temp3=aggregate(cbind(mean=size_age_corrected_lBAI)~Site+Year,dataset,mean) 
+  temp4=aggregate(cbind(ntrees=size_age_corrected_lBAI)~Site+Year,dataset,length) 
+  temp5=merge(temp3,temp4,by=c("Year","Site"))
+  # by Year
+  temp6=aggregate(cbind(mean=mean)~Year,temp5,mean) 
+  temp7=aggregate(cbind(ntrees=ntrees)~Year,temp5,sum) 
+  temp8=aggregate(cbind(nsites=ntrees)~Year,temp5,length)
+  temp9=aggregate(cbind(sd=mean)~Year,temp5,sd)
+  # combine
+  temp10=merge(temp6,merge(temp7,merge(temp8,temp9,by="Year"),by="Year"),by="Year")
+  temp10$pse=with( temp10,mean + (sd / (nsites^.5)) ) # se=sd/sqrt(nsites)
+  temp10$mse=with( temp10,mean - (sd / (nsites^.5)) )
+  temp10$treat=treatment
+  temp11=subset(temp10,Year>=1875)
+  return(temp11)
+}
+all_OG=year_mean(oldgrowth_Mh_age_yes,"OG")
+all_cut=year_mean(rbind(mature_Mh_age_yes,recent_Mh_age_yes),"Cut")
+all_no_log_ever=year_mean(no_log_ever_Mh_age_yes,"Nlog")
+
+#### just OG and cut ####
+two=rbind(all_OG,all_cut)
+two$Year[two$treat=="Cut"]=two$Year[two$treat=="Cut"]+0.2 # offset for plotting
+ggplot(two, aes(x=Year, y=mean, group=treat)) +
+  geom_point(aes(shape=treat, colour=treat, size=1)) +
+  geom_line(aes(linetype=treat)) +
+  geom_errorbar(aes(ymin=mse, ymax=pse), width=0.1) +
+  labs(x="Year",y="Size-age-corrected lBAI") +  theme(axis.text=element_text(size=14)) +
+  geom_vline(xintercept = 1930, linetype="dashed", color = "red", size=1.5) +
+  geom_vline(xintercept = 1975, linetype="dashed", color = "red", size=1.5) 
