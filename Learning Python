@@ -1,1 +1,24 @@
 https://trinket.io/embed/python/
+#!/bin/python3
+
+print('Hello! My name is EJ. My pronouns are They/Them')
+print('Here is a picture of a dog')
+print('  0--- ')
+print('  |||| ')
+print('___-____ ')
+print('|       |')
+print('|       |')
+print('|       |')
+print('|       |')
+print('|       |')
+print('|       |')
+print('|       |')
+print('_________')
+
+print(2022-1996)
+
+born = input('what year were you born')
+born = int(born)
+age = 2023- born
+print(age)
+print('in the year 2025 you\'ll be',age ,'year old')
