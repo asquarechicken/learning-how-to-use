@@ -15,7 +15,7 @@ print('|       |')
 print('|       |')
 print('_________')
 
-print(2022-1996)
+print(2022-1342)
 
 born = input('what year were you born')
 born = int(born)
